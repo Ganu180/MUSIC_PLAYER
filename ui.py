@@ -6,6 +6,10 @@ from player import MusicPlayer
 
 from metadata import get_song_duration, format_time
 
+from storage import load_data, save_data
+
+from tkinter import filedialog
+
 class MusicPlayerUI:
     def __init__(self):
         self.root = tk.Tk()
@@ -18,6 +22,11 @@ class MusicPlayerUI:
         self.player = MusicPlayer()
         self.music_folder = "music"
         self.song_paths = {}
+
+        self.data = load_data()
+
+        self.shuffle = False
+        self.repeat = False
 
         self.create_widgets()
         self.load_songs()
@@ -38,6 +47,29 @@ class MusicPlayerUI:
 
         self.search_entry = tk.Entry(search_frame, width=30)
         self.search_entry.pack(side=tk.LEFT, padx=5)
+
+        menu_bar = tk.Menu(self.root)
+
+        file_menu = tk.Menu(menu_bar, tearoff=0)
+
+        file_menu.add_command(
+            label="Open Music Folder",
+            command=self.open_folder
+        )
+
+        file_menu.add_separator()
+
+        file_menu.add_command(
+            label="Exit",
+            command=self.root.quit
+        )
+
+        menu_bar.add_cascade(
+            label="File",
+            menu=file_menu
+        )
+
+        self.root.config(menu=menu_bar)
 
         tk.Button(
             search_frame,
@@ -129,6 +161,27 @@ class MusicPlayerUI:
             command=self.next_song
         ).grid(row=0,column=5,padx=5)
 
+        tk.Button(
+            button_frame,
+            text="❤ Favorite",
+            width=12,
+            command=self.add_favorite
+        ).grid(row=0,column=6,padx=5)
+
+        tk.Button(
+            button_frame,
+            text="🔀 Shuffle",
+            width=12,
+            command=self.toggle_shuffle
+        ).grid(row=0,column=7,padx=5)
+
+        tk.Button(
+            button_frame,
+            text="🔁 Repeat",
+            width=12,
+            command=self.toggle_repeat
+        ).grid(row=0,column=8,padx=5)
+
         tk.Label(self.root, text="Volume").pack()
 
         self.volume = ttk.Scale(
@@ -150,6 +203,18 @@ class MusicPlayerUI:
         )
         self.status.pack(pady=10)
 
+        self.root.configure(bg="#2B2B2B")
+
+        self.status.configure(
+            bg="#2B2B2B",
+            fg="white"
+        )
+
+        self.now_playing.configure(
+            bg="#2B2B2B",
+            fg="white"
+        )
+
     def load_songs(self):
 
         if not os.path.exists(self.music_folder):
@@ -168,7 +233,6 @@ class MusicPlayerUI:
                 self.song_list.insert(tk.END, song)
                 
     def play_song(self):
-
         selected = self.song_list.curselection()
 
         if not selected:
@@ -176,27 +240,28 @@ class MusicPlayerUI:
             return
 
         self.current_index = selected[0]
-
         song = self.song_list.get(self.current_index)
 
+        # Update recent songs
+        if song in self.data["recent"]:
+            self.data["recent"].remove(song)
+
+        self.data["recent"].insert(0, song)
+        self.data["recent"] = self.data["recent"][:10]
+        save_data(self.data)
+
+        # Play song
         self.player.play(self.song_paths[song])
 
-        self.song_duration = get_song_duration(
-            self.song_paths[song]
-        )
+        self.song_duration = get_song_duration(self.song_paths[song])
 
         self.progress["maximum"] = self.song_duration
+        self.progress["value"] = 0
 
         self.update_progress()
 
-        self.now_playing.config(
-            text=f"🎵 {song}"
-        )
-
-        self.status.config(
-            text="Status: Playing",
-            fg="green"
-        )
+        self.now_playing.config(text=f"🎵 {song}")
+        self.status.config(text="Status: Playing", fg="green")
 
     def stop_song(self):
         self.player.stop()
@@ -282,7 +347,10 @@ class MusicPlayerUI:
             self.root.after(1000, self.update_progress)
 
         else:
-            self.next_song()
+            if self.repeat:
+                self.play_song()
+            else:
+                self.next_song()
 
     def search_song(self):
 
@@ -301,6 +369,50 @@ class MusicPlayerUI:
                 self.song_list.see(index)
 
                 break
-            
+
+    def open_folder(self):
+
+        folder = filedialog.askdirectory()
+
+        if not folder:
+            return
+
+        self.music_folder = folder
+
+        self.song_list.delete(0, tk.END)
+
+        self.song_paths.clear()
+
+        self.load_songs()
+
+    def add_favorite(self):
+
+        selected = self.song_list.curselection()
+
+        if not selected:
+            return
+
+        song = self.song_list.get(selected[0])
+
+        if song not in self.data["favorites"]:
+            self.data["favorites"].append(song)
+            save_data(self.data)
+
+    def toggle_shuffle(self):
+        self.shuffle = not self.shuffle
+
+        if self.shuffle:
+            self.status.config(text="Shuffle ON")
+        else:
+            self.status.config(text="Shuffle OFF")
+
+    def toggle_repeat(self):
+        self.repeat = not self.repeat
+
+        if self.repeat:
+            self.status.config(text="Repeat ON")
+        else:
+            self.status.config(text="Repeat OFF")
+
     def run(self):
         self.root.mainloop()
